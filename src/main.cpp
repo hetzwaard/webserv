@@ -3,10 +3,10 @@
 /*                                                        ::::::::            */
 /*   main.cpp                                           :+:    :+:            */
 /*                                                     +:+                    */
-/*   By: mahkilic <mahkilic@student.42.fr>            +#+                     */
+/*   By: mahkilic <mahkilic@student.codam.nl>         +#+                     */
 /*                                                   +#+                      */
-/*   Created: 2026/04/18 16:02:41 by mahkilic      #+#    #+#                 */
-/*   Updated: 2026/04/18 16:02:41 by mahkilic      ########   odam.nl         */
+/*   Created: 2026/04/18 16:09:18 by mahkilic      #+#    #+#                 */
+/*   Updated: 2026/04/18 16:09:18 by mahkilic      ########   odam.nl         */
 /*                                                                            */
 /* ************************************************************************** */
 
