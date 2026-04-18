@@ -1,15 +1,14 @@
 NAME		= webserv
 
-CXX		= c++
+CXX			= c++
 CXXFLAGS	= -Wall -Wextra -Werror -std=c++98
 
-SRCDIR	= src
-OBJDIR	= obj
-INCDIR	= include
+SRCDIR		= src
+OBJDIR		= obj
+INCDIR		= include
 
-SRCS		= $(SRCDIR)/main.cpp
-
-OBJS		= $(SRCS:$(SRCDIR)/%.cpp=$(OBJDIR)/%.o)
+SRCS		:= $(shell find $(SRCDIR) -name '*.cpp')
+OBJS		:= $(patsubst $(SRCDIR)/%.cpp,$(OBJDIR)/%.o,$(SRCS))
 
 all: $(NAME)
 
@@ -17,7 +16,7 @@ $(NAME): $(OBJS)
 	$(CXX) $(CXXFLAGS) $(OBJS) -o $(NAME)
 
 $(OBJDIR)/%.o: $(SRCDIR)/%.cpp
-	@mkdir -p $(OBJDIR)
+	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -I$(INCDIR) -c $< -o $@
 
 clean:
