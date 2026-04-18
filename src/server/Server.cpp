@@ -1,4 +1,7 @@
 #include "server/Server.hpp"
+#include "http/HttpResponse.hpp"
+
+#include <sstream>
 
 namespace
 {
@@ -140,15 +143,22 @@ void	Server::handleReadable(int fd)
 		return;
 	}
 	c.touch();
-	c.readBuf().append(buf, static_cast<std::size_t>(n));
+	c.request().feed(buf, static_cast<std::size_t>(n));
 
-	std::string::size_type pos = c.readBuf().find('\n');
-	if (pos != std::string::npos)
+	if (c.request().isError())
 	{
-		std::string line = c.readBuf().substr(0, pos + 1);
-		c.readBuf().erase(0, pos + 1);
-		c.writeBuf() = "ECHO: " + line;
-		c.resetBytesSent();
+		buildErrorResponse(c, c.request().errorCode());
+		c.setState(Connection::WRITING_RESPONSE);
+		setPollEvents(fd, POLLOUT);
+		return;
+	}
+	if (c.request().isComplete())
+	{
+		std::cout << "Request: " << c.request().method()
+				<< " " << c.request().uri()
+				<< " " << c.request().version()
+				<< " (body " << c.request().body().size() << "B)" << std::endl;
+		buildOkResponse(c);
 		c.setState(Connection::WRITING_RESPONSE);
 		setPollEvents(fd, POLLOUT);
 	}
@@ -165,10 +175,7 @@ void	Server::handleWritable(int fd)
 	std::size_t			offset = c.bytesSent();
 	if (offset >= buf.size())
 	{
-		c.writeBuf().clear();
-		c.resetBytesSent();
-		c.setState(Connection::READING_REQUEST);
-		setPollEvents(fd, POLLIN);
+		closeConnection(fd);
 		return;
 	}
 
@@ -182,12 +189,38 @@ void	Server::handleWritable(int fd)
 	c.addBytesSent(static_cast<std::size_t>(n));
 
 	if (c.writeComplete())
-	{
-		c.writeBuf().clear();
-		c.resetBytesSent();
-		c.setState(Connection::READING_REQUEST);
-		setPollEvents(fd, POLLIN);
-	}
+		closeConnection(fd);
+}
+
+void	Server::buildOkResponse(Connection& c)
+{
+	const HttpRequest& req = c.request();
+	std::ostringstream body;
+	body << "<!DOCTYPE html><html><head><title>webserv</title></head>"
+		<< "<body style=\"font-family:sans-serif;\">"
+		<< "<h1>webserv is alive.</h1>"
+		<< "<p>Method: <b>" << req.method() << "</b></p>"
+		<< "<p>URI: <b>" << req.uri() << "</b></p>"
+		<< "<p>Version: <b>" << req.version() << "</b></p>"
+		<< "<p>Body size: " << req.body().size() << " bytes</p>"
+		<< "</body></html>";
+
+	HttpResponse resp(200);
+	resp.setHeader("Content-Type", "text/html; charset=utf-8");
+	resp.setBody(body.str());
+
+	c.writeBuf() = resp.serialize();
+	c.resetBytesSent();
+}
+
+void	Server::buildErrorResponse(Connection& c, int code)
+{
+	HttpResponse resp(code);
+	resp.setHeader("Content-Type", "text/html; charset=utf-8");
+	resp.setBody(HttpResponse::defaultErrorBody(code));
+
+	c.writeBuf() = resp.serialize();
+	c.resetBytesSent();
 }
 
 void	Server::closeConnection(int fd)

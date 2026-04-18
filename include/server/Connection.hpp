@@ -1,6 +1,8 @@
 #ifndef CONNECTION_HPP
 # define CONNECTION_HPP
 
+# include "http/HttpRequest.hpp"
+
 # include <string>
 # include <ctime>
 # include <cstddef>
@@ -34,6 +36,11 @@ public:
 
 	bool			writeComplete() const;
 
+	HttpRequest&		request();
+	const HttpRequest&	request() const;
+
+	void			resetForNextRequest();
+
 private:
 	int				_fd;
 	State			_state;
@@ -41,6 +48,7 @@ private:
 	std::string		_writeBuf;
 	std::size_t		_bytesSent;
 	std::time_t		_lastActivity;
+	HttpRequest		_request;
 };
 
 #endif

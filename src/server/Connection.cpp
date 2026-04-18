@@ -21,3 +21,15 @@ std::time_t	Connection::lastActivity() const	{ return _lastActivity; }
 void		Connection::touch()					{ _lastActivity = std::time(NULL); }
 
 bool		Connection::writeComplete() const	{ return _bytesSent >= _writeBuf.size(); }
+
+HttpRequest&		Connection::request()		{ return _request; }
+const HttpRequest&	Connection::request() const	{ return _request; }
+
+void	Connection::resetForNextRequest()
+{
+	_request.reset();
+	_readBuf.clear();
+	_writeBuf.clear();
+	_bytesSent = 0;
+	_state = READING_REQUEST;
+}

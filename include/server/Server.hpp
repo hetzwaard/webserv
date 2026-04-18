@@ -38,6 +38,9 @@ private:
 	void	closeConnection(int fd);
 	void	checkTimeouts();
 
+	void	buildOkResponse(Connection& c);
+	void	buildErrorResponse(Connection& c, int code);
+
 	void	addFd(int fd, short events);
 	void	removeFd(int fd);
 	void	setPollEvents(int fd, short events);
