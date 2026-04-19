@@ -33,3 +33,11 @@ void	Connection::resetForNextRequest()
 	_bytesSent = 0;
 	_state = READING_REQUEST;
 }
+
+bool	Connection::shouldKeepAlive() const
+{
+	std::string conn = _request.header("connection");
+	if (_request.version() == "HTTP/1.1")
+		return conn != "close";
+	return conn == "keep-alive";
+}

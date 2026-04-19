@@ -158,7 +158,6 @@ bool	HttpRequest::parseHeaders()
 
 	if (line.empty())
 	{
-		// End of headers. RFC 7230: HTTP/1.1 requires Host.
 		if (_version == "HTTP/1.1" && _headers.find("host") == _headers.end())
 			{ fail(400); return false; }
 
@@ -167,10 +166,8 @@ bool	HttpRequest::parseHeaders()
 		bool hasCl = (cl != _headers.end());
 		bool hasTe = (te != _headers.end());
 
-		// Both Content-Length and Transfer-Encoding is a request-smuggling vector.
 		if (hasCl && hasTe)
 			{ fail(400); return false; }
-
 		if (hasTe)
 		{
 			if (toLower(te->second) != "chunked")
@@ -180,7 +177,6 @@ bool	HttpRequest::parseHeaders()
 			_chunkRemaining = 0;
 			return true;
 		}
-
 		if (hasCl)
 		{
 			const std::string& v = cl->second;
@@ -197,8 +193,6 @@ bool	HttpRequest::parseHeaders()
 			_state = BODY_LENGTH;
 			return true;
 		}
-
-		// No body indicators → request is complete with empty body.
 		_state = COMPLETE;
 		return false;
 	}
@@ -215,7 +209,6 @@ bool	HttpRequest::parseHeaders()
 		if (name[i] == ' ' || name[i] == '\t') { fail(400); return false; }
 	}
 
-	// Duplicate Content-Length → bad.
 	if (name == "content-length" && _headers.find("content-length") != _headers.end())
 		{ fail(400); return false; }
 
@@ -247,7 +240,6 @@ bool	HttpRequest::parseBodyChunked()
 			std::string line;
 			if (!extractLine(line))
 				return false;
-			// Strip chunk extensions (anything after ';').
 			std::size_t semi = line.find(';');
 			if (semi != std::string::npos)
 				line.erase(semi);
@@ -287,7 +279,6 @@ bool	HttpRequest::parseBodyChunked()
 		}
 		case CHUNK_TRAILER:
 		{
-			// Read trailer header lines (ignored) until blank line.
 			std::string line;
 			if (!extractLine(line))
 				return false;

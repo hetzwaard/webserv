@@ -26,7 +26,7 @@ std::string	HttpResponse::serialize() const
 		h["Content-Length"] = cl.str();
 	}
 	if (h.find("Connection") == h.end())
-		h["Connection"] = "close";
+		h["Connection"] = "keep-alive";
 	if (h.find("Server") == h.end())
 		h["Server"] = "webserv/0.1";
 

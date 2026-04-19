@@ -40,6 +40,7 @@ public:
 	const HttpRequest&	request() const;
 
 	void			resetForNextRequest();
+	bool			shouldKeepAlive() const;
 
 private:
 	int				_fd;
