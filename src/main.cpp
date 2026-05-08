@@ -14,5 +14,5 @@ int main(void)
 		std::cerr << "fatal: " << e.what() << std::endl;
 		return (1);
 	}
-	return (0);
+	return (0);a
 }
