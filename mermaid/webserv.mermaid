@@ -1,0 +1,117 @@
+---
+title: webserv — Overview (start here)
+---
+
+%%{init: {"theme": "dark"}}%%
+
+%% =====================================================================
+%% This is the BIG-PICTURE map of the webserv project.
+%% It answers "what are the boxes, who talks to whom, and what's TODO?"
+%%
+%% For deeper dives, see the focused companion diagrams:
+%%   • webserv-lifecycle.mermaid  — one request, start to finish
+%%   • webserv-poll.mermaid       — the single poll() event loop
+%%   • webserv-parser.mermaid     — how HttpRequest eats bytes
+%%   • webserv-routing.mermaid    — how a URL becomes a response
+%%   • webserv-cgi.mermaid        — how CGI works (stub for now)
+%%
+%% Convention:
+%%   • Solid box   = implemented in the current code
+%%   • Dashed box  = planned / stub (not wired up yet)
+%%   • Green box   = external — not part of webserv's source
+%% =====================================================================
+
+flowchart TB
+
+    %% ───────── External actors (not part of our code) ─────────
+    browser["Browser / curl / telnet<br/>(any HTTP/1.1 client)"]:::extern
+    fs["./www/  on disk<br/>index.html · errors/ · uploads/<br/>(real files, read with open/read,<br/>NOT through poll — disk is exempt)"]:::extern
+    cgi_child["CGI child process<br/>e.g. python3 cgi-bin/hello.py<br/>(fork+execve, planned)"]:::extern_planned
+
+    %% ───────── The one webserv process ─────────
+    subgraph PROC["one webserv process · one thread · no per-client fork"]
+        direction TB
+
+        main_box["main()<br/>build Server,<br/>addListener(9090), addListener(9091),<br/>run() forever<br/><br/>file: src/main.cpp"]
+
+        subgraph SRV["Server  —  the orchestrator<br/>file: src/server/Server.cpp"]
+            direction TB
+            poll_box["The event loop<br/>(run + poll)<br/><i>see webserv-poll.mermaid</i>"]
+            accept_box["Accept new browsers<br/>(acceptNewClient)"]
+            route_box["Decide what to do with a complete request<br/>(handleRequest → GET / POST / DELETE)<br/><i>see webserv-routing.mermaid</i>"]
+            build_box["Build the response<br/>serveFile / serveDirectory /<br/>handleUpload / handleDeleteMethod /<br/>buildRedirect / buildErrorResponse"]
+            helpers["URL helpers<br/>resolvePath · percentDecode ·<br/>isPathSafe · mimeType"]
+            timeouts["Idle watchdog<br/>checkTimeouts() —<br/>close conns idle > 30 s"]
+        end
+
+        subgraph CONN["Connection  —  one per open browser<br/>file: src/server/Connection.cpp"]
+            direction TB
+            conn_state["state:<br/>READING_REQUEST  or<br/>WRITING_RESPONSE"]
+            conn_bufs["readBuf — bytes from browser<br/>writeBuf — bytes to browser<br/>bytesSent · lastActivity"]
+            conn_req["owns one HttpRequest"]
+            conn_ka["shouldKeepAlive()<br/>resetForNextRequest()<br/>(HTTP/1.1 reuses the TCP socket)"]
+        end
+
+        subgraph REQ["HttpRequest  —  the parser<br/>file: src/http/HttpRequest.cpp"]
+            direction TB
+            req_parser["incremental parser:<br/>feed(data, len) eats bytes<br/>as they arrive — partial reads<br/>are fine, that's the whole point<br/><br/><i>see webserv-parser.mermaid</i>"]
+            req_fields["method · uri · version ·<br/>headers (lowercased) · body"]
+            req_limits["limits:<br/>MAX_REQUEST_LINE 8 KB<br/>MAX_HEADERS 8 KB<br/>DEFAULT_MAX_BODY 1 MB"]
+        end
+
+        subgraph RESP["HttpResponse  —  the builder<br/>file: src/http/HttpResponse.cpp"]
+            direction TB
+            resp_build["setStatus / setHeader / setBody"]
+            resp_ser["serialize() → wire bytes<br/>auto-adds Content-Length,<br/>Connection, Server headers<br/>+ default error HTML"]
+        end
+
+        subgraph CGI["CgiHandler  —  STUB, not wired up<br/>file: src/cgi/CgiHandler.cpp"]
+            direction TB
+            cgi_box["State machine<br/>INIT → SPAWNED → SENDING_STDIN<br/>→ READING_STDOUT → DONE / FAILED<br/><br/><i>see webserv-cgi.mermaid</i>"]
+        end
+
+        subgraph CFG["Config parser  —  PLANNED<br/>(subject requires NGINX-style config)"]
+            direction TB
+            cfg_box["read configs/*.conf and feed<br/>Server with: ports, server_name,<br/>routes, allowed methods, root,<br/>autoindex, redirects, error pages,<br/>client_max_body_size,<br/>upload_dir, CGI extensions.<br/><br/>For now, all of these are<br/>hardcoded in Server.cpp."]
+        end
+    end
+
+    %% ───────── Relationships ─────────
+    browser <-- "TCP socket · HTTP/1.1 bytes" --> poll_box
+    main_box --> SRV
+
+    poll_box --> accept_box
+    accept_box -- "creates" --> CONN
+    poll_box -- "recv() → feeds bytes into" --> CONN
+    CONN -- "contains one" --> REQ
+    poll_box -- "when request is complete" --> route_box
+    route_box --> build_box
+    build_box -- "builds and serializes" --> RESP
+    RESP -- "bytes copied into writeBuf" --> CONN
+    poll_box -- "send() bytes from" --> CONN
+    poll_box -. "checks idle every loop" .-> timeouts
+
+    build_box <-- "open / read / write / stat / opendir / remove" --> fs
+
+    route_box -. "planned: route .py / .php to CGI" .-> CGI
+    CGI -. "fork + pipe + execve" .-> cgi_child
+    CGI -. "child output → " .-> RESP
+
+    CFG -. "planned: drives" .-> SRV
+
+    %% ───────── Legend ─────────
+    subgraph LEGEND["legend"]
+        direction LR
+        L1["solid = built"]:::done
+        L2["dashed = planned / stub"]:::planned
+        L3["green = external"]:::extern
+    end
+
+    classDef done    stroke:#7c5cfc,color:#e8e8f0
+    classDef planned stroke-dasharray: 5 5,stroke:#aa66ff,color:#cba6ff
+    classDef extern  fill:#0e2a1d,stroke:#33aa66,color:#aaffcc
+    classDef extern_planned fill:#0e2a1d,stroke:#33aa66,color:#aaffcc,stroke-dasharray: 5 5
+
+    class CGI,CFG,cgi_box,cfg_box planned
+    class browser,fs extern
+    class cgi_child extern_planned

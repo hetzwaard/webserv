@@ -1,0 +1,80 @@
+---
+title: webserv — One request, one response (lifecycle)
+---
+
+%%{init: {"theme": "dark"}}%%
+
+%% =====================================================================
+%% The story of a single browser hitting webserv:
+%%   TCP connect → accept → recv bytes → parse → route →
+%%   build response → send bytes → keep-alive or close.
+%%
+%% Read top to bottom. Numbers in the left margin are the order things
+%% happen. The poll() calls between steps are not separate "actions" —
+%% they're just where the loop sleeps waiting for the OS to say
+%% "this fd is ready now". Plain English first, then the C++ symbol you
+%% can grep for in src/server/Server.cpp.
+%% =====================================================================
+
+sequenceDiagram
+    autonumber
+    actor Browser as Browser
+    participant Listen as Listen socket (port 9090)
+    participant Server as Server::run() — poll() loop
+    participant Conn as Connection (one per client fd)
+    participant Req as HttpRequest (parser)
+    participant Resp as HttpResponse (builder)
+    participant Disk as Disk (./www/)
+
+    Note over Server,Listen: At startup, addListener(9090) made this socket<br/>non-blocking and registered it with poll() watching POLLIN.
+
+    Browser->>Listen: TCP SYN (connect)
+    Note over Server: poll() wakes: POLLIN on the listen fd.
+    Server->>Server: acceptNewClient(fd)<br/>accept() → new client fd, set O_NONBLOCK
+    Server->>Conn: new Connection(fd)<br/>state = READING_REQUEST
+    Note over Server: add client fd to poll set, watching POLLIN.
+
+    Browser->>Server: send bytes — the request line, headers, blank line<br/>("GET / HTTP/1.1" + Host header + CRLF CRLF)
+    Note over Server: poll() wakes: POLLIN on the client fd.
+    Server->>Server: handleReadable(fd)<br/>recv() up to 4096 bytes (READ_CHUNK)
+    Server->>Conn: touch() — reset the 30 s idle timer
+    Server->>Req: feed(buf, n)<br/>parser eats bytes — partial reads are fine
+
+    alt parser hit an error (bad syntax, too big, etc.)
+        Req-->>Server: state = ERROR_STATE, errorCode = 400 / 413 / 414 / 431 / 501 / 505
+        Server->>Resp: buildErrorResponse(code)<br/>(Connection: close, no keep-alive)
+    else parser still needs more bytes
+        Note over Server: nothing to do — just return.<br/>poll() will wake again when more bytes arrive.
+    else parser finished a whole request
+        Req-->>Server: state = COMPLETE<br/>method · uri · headers · body filled in
+        Server->>Server: handleRequest(c)<br/>see webserv-routing.mermaid
+        Server->>Disk: stat / open / read (or write / remove for upload / delete)
+        Note over Server,Disk: Disk I/O is exempt from poll().<br/>You may read/write regular files directly.
+        Disk-->>Server: file bytes (or "not found")
+        Server->>Resp: setStatus / setHeader / setBody
+    end
+
+    Resp-->>Conn: writeBuf = resp.serialize()<br/>bytesSent = 0
+    Server->>Conn: state = WRITING_RESPONSE
+    Note over Server: setPollEvents(fd, POLLOUT) —<br/>now we want the kernel to tell us when we can send.
+
+    Note over Server: poll() wakes: POLLOUT on the client fd.
+    Server->>Browser: send() bytes from writeBuf+bytesSent
+    Server->>Conn: addBytesSent(n)
+
+    loop until writeBuf is fully drained
+        Note over Server: poll() wakes again on POLLOUT.<br/>The OS only takes as many bytes as its<br/>send buffer has room for — that's why we loop.
+        Server->>Browser: send() more bytes
+        Server->>Conn: addBytesSent(n)
+    end
+
+    alt shouldKeepAlive() is true (HTTP/1.1 default, no "Connection: close")
+        Server->>Conn: resetForNextRequest()<br/>clears HttpRequest, buffers,<br/>state = READING_REQUEST
+        Note over Server: setPollEvents(fd, POLLIN) —<br/>same TCP socket, ready for the next request.
+    else explicit close, or it was an error response
+        Server->>Server: closeConnection(fd)<br/>close(fd); erase from _conns;<br/>remove from poll set
+    end
+
+    Browser-->>Browser: render response / next request
+
+    Note over Server: every loop iteration also runs checkTimeouts():<br/>any Connection with lastActivity > 30 s ago → closeConnection.<br/>This is how webserv guarantees no client can hang forever.

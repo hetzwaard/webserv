@@ -1,0 +1,86 @@
+---
+title: webserv — How HttpRequest eats bytes (parser state machine)
+---
+
+%%{init: {"theme": "dark"}}%%
+
+%% =====================================================================
+%% Why this state machine exists:
+%%   recv() may hand you ANY number of bytes — half a header, two whole
+%%   requests glued together, just a "\r" with the "\n" arriving later.
+%%   The parser must NEVER block waiting for "the rest". Instead it eats
+%%   whatever's there, remembers where it left off in `_state`, and
+%%   returns control to the poll() loop. Next time bytes arrive, feed()
+%%   resumes from the same state.
+%%
+%% Each state in this diagram = a position in the parser's progress.
+%% Transitions are labeled with what triggers them.
+%% Error codes match the numbers HttpRequest actually emits.
+%% =====================================================================
+
+stateDiagram-v2
+    direction TB
+
+    [*] --> START_LINE : new HttpRequest()\nor reset()
+
+    note left of START_LINE
+        feed(data, len) appends to _raw,
+        then loops advance() until it
+        returns false (= need more bytes).
+        Anything not consumed stays in _raw
+        for the next feed() call.
+    end note
+
+    START_LINE : Reading "METHOD URI VERSION\\r\\n"\n(e.g. "GET / HTTP/1.1")
+
+    START_LINE --> HEADERS       : found a complete "\\r\\n"\nparsed all three tokens
+    START_LINE --> ERROR_STATE   : line > 8 KB → 414\nmissing token → 400\nunknown method → 400\nGET/POST/DELETE only — others → 501\nversion not HTTP/1.0 or 1.1 → 505
+
+    HEADERS : Reading one "Name: Value\\r\\n" at a time\nNames lowercased, stored in _headers
+
+    HEADERS --> HEADERS          : another header line
+    HEADERS --> ERROR_STATE      : bad syntax (no colon, space in name) → 400\nheaders > 8 KB → 431\nHTTP/1.1 with no Host header → 400\nboth Content-Length AND Transfer-Encoding → 400\nTransfer-Encoding ≠ "chunked" → 501\nduplicate Content-Length → 400
+
+    HEADERS --> COMPLETE         : empty "\\r\\n" seen,\nno body expected\n(no Content-Length, no chunked,\nor Content-Length: 0)
+    HEADERS --> BODY_LENGTH      : Content-Length: N\n(N ≤ maxBodySize, else 413)
+    HEADERS --> BODY_CHUNKED     : Transfer-Encoding: chunked
+
+    BODY_LENGTH : Reading exactly Content-Length bytes\ninto _body
+
+    BODY_LENGTH --> COMPLETE     : got all N bytes
+    BODY_LENGTH --> BODY_LENGTH  : got some, still need more
+
+    state "BODY_CHUNKED  (un-chunks as it reads)" as BODY_CHUNKED {
+        direction TB
+
+        [*] --> CHUNK_SIZE
+        CHUNK_SIZE    : Read "<hex>\\r\\n"\n= size of next chunk
+        CHUNK_DATA    : Append that many bytes to _body
+        CHUNK_CRLF    : Read trailing "\\r\\n"\n(every chunk ends with this)
+        CHUNK_TRAILER : Read optional trailer headers,\nthen a final empty line
+
+        CHUNK_SIZE  --> CHUNK_DATA    : size > 0
+        CHUNK_SIZE  --> CHUNK_TRAILER : size == 0\n(last chunk)
+        CHUNK_DATA  --> CHUNK_CRLF    : chunk drained
+        CHUNK_CRLF  --> CHUNK_SIZE    : next chunk
+    }
+
+    BODY_CHUNKED --> COMPLETE     : trailer's blank line seen\n(body is now un-chunked plain bytes,\nas the subject requires for CGI)
+    BODY_CHUNKED --> ERROR_STATE  : bad hex chunk size → 400\nmissing "\\r\\n" after chunk → 400\ntotal body > maxBodySize → 413
+
+    COMPLETE : method · uri · version ·\nheaders · body all filled.\nServer calls handleRequest(),\nthen Connection::resetForNextRequest()\nbefore the next request on this socket.
+
+    ERROR_STATE : errorCode() tells Server which\nstatus code to send.\nServer builds an error response\nwith Connection: close.
+
+    COMPLETE     --> [*]
+    ERROR_STATE  --> [*]
+
+    note right of BODY_CHUNKED
+        "Chunked" means the client sends the body
+        in pieces and only knows the total size as
+        it goes — typical for streaming uploads.
+        The subject says webserv MUST un-chunk the
+        body before handing it to CGI, so we
+        decode it here once and store the plain
+        bytes in _body.
+    end note
