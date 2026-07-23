@@ -100,6 +100,11 @@ static Location	parseLocation(const std::vector<std::string> &t, size_t &i)
 				loc.methods.push_back(next(t, i));
 			expect(t, i, ";");
 		}
+		else if (key == "return")
+		{
+			loc.redirect = next(t, i);
+			expect(t, i, ";");
+		}
 		else
 			throw std::runtime_error(": config: unknown location directive '" + key + "'");
 	}

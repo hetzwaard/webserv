@@ -3,6 +3,8 @@
 
 int	main(int argc, char **argv)
 {
+	signal(SIGPIPE, SIG_IGN);
+
 	std::string	path = (argc > 1) ? argv[1] : "default.conf";
 	try
 	{
@@ -12,7 +14,7 @@ int	main(int argc, char **argv)
 	}
 	catch(const std::exception& e)
 	{
-		std::cerr << "Error" << e.what() << std::endl;
+		std::cerr << "Error: " << e.what() << std::endl;
 		return (1);
 	}
 	return (0);
