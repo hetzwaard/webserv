@@ -31,6 +31,23 @@ Request	parseRequest(const std::string &raw)
 	return (req);
 }
 
+bool	bodyTooLarge(const std::string &raw, size_t maxBody)
+{
+	std::string::size_type	headerEnd = raw.find("\r\n\r\n");	// no blank line yet, keep on going
+	if (headerEnd == std::string::npos)
+		return (false);
+
+	// Before the header end, if it's there and the declared size exceeds the limit, reject immdtly.
+	std::string::size_type	clPos = raw.find("Content-Length:");
+	if (clPos != std::string::npos && clPos < headerEnd)
+	{
+		size_t	declared = (size_t)std::atol(raw.c_str() + clPos + 15);
+		if (declared > maxBody)
+			return (true);
+	}
+	return (raw.size() - (headerEnd + 4) > maxBody);
+}
+
 bool	isRequestComplete(const std::string &raw)
 {
 	std::string::size_type	headerEnd = raw.find("\r\n\r\n"); // no blank line yet means the headers haven't even finished
@@ -78,7 +95,7 @@ static std::string	contentType(const std::string &path)
 	if (ext == ".gif")							return ("image/gif");
 	if (ext == ".txt")							return ("text/plain");
 
-	return ("application/octec-stream"); // anything unknown falls back to application/octet-stream
+	return ("application/octet-stream"); // anything unknown falls back to application/octet-stream
 }
 
 static bool	readFile(const std::string &path, std::string &out)
@@ -115,7 +132,47 @@ static std::string	toStr(int n)
 	return oss.str();
 }
 
-static std::string	errorResponse(int code, const std::string &status, const ServerConfig &config)
+static std::string	stripToRoot(const std::string &reqPath, const Location *loc)
+{
+	std::string	rest = reqPath.substr(loc->path.size());
+	if (rest.empty() || rest[0] != '/')
+		rest = "/" + rest;
+	return (loc->root + rest);
+}
+
+static std::string	resolvePath(const std::string &reqPath, const Location *loc)
+{
+	std::string	full = stripToRoot(reqPath, loc);
+	if (full[full.size() - 1] == '/')
+		full += loc->index;
+	return (full);
+}
+
+static bool	listDirectory(const std::string &dirPath, const std::string &urlPath,
+					std::string &out)
+{
+	DIR	*dir = opendir(dirPath.c_str());
+	if (!dir)
+		return (false);
+
+	std::string		body = "<h1>Index of " + urlPath + "</h1>\n<ul>\n";
+	struct dirent	*entry;
+
+	while ((entry = readdir(dir)) != NULL)
+	{
+		std::string	name = entry->d_name;
+		if (name == ".")
+			continue ;
+		body += "<li><a href=\"" + urlPath + name + "\">" + name + "</a></li>\n";
+	}
+	closedir(dir);
+
+	body += "</ul>\n";
+	out = body;
+	return (true);
+}
+
+std::string	errorResponse(int code, const std::string &status, const ServerConfig &config)
 {
 	std::map<int, std::string>::const_iterator	it = config.errorPages.find(code);
 
@@ -173,6 +230,69 @@ static bool	isCgi(const std::string &fsPath, const Location *loc)
 	return (fsPath.compare(fsPath.size() - loc->cgiExt.size(), loc->cgiExt.size(), loc->cgiExt) == 0);
 }
 
+bool	cgiTarget(const Request &req, const ServerConfig &config,
+				std::string &fsPath, const Location **outLoc)
+{
+	if (!req.valid || req.path.find("..") != std::string::npos)
+		return (false);
+
+	const Location	*loc = matchLocation(req, config);
+	if (!loc)
+		return (false);
+
+	bool	allowed = false;
+	for (size_t i = 0; i < loc->methods.size(); ++i)
+		if (loc->methods[i] == req.method)
+			allowed = true;
+	if (!allowed)
+		return (false);
+
+	std::string	path = resolvePath(req.path, loc);
+
+	if (!isCgi(path, loc))
+		return (false);
+
+	fsPath = path;
+	*outLoc = loc;
+
+	return (true);
+}
+
+std::string	cgiResponse(const std::string &cgiOut, const ServerConfig &config)
+{
+	if (cgiOut.empty())
+		return (errorResponse(500, "Internal Server Error", config));
+
+	std::string::size_type	sep = cgiOut.find("\r\n\r\n");
+	std::string::size_type	seplen = 4;
+	if (sep == std::string::npos)
+	{
+		sep = cgiOut.find("\n\n");
+		seplen = 2;
+	}
+
+	std::string	cgiHeaders;
+	std::string	cgiBody;
+
+	if (sep != std::string::npos)
+	{
+		cgiHeaders = cgiOut.substr(0, sep);
+		cgiBody = cgiOut.substr(sep + seplen);
+	}
+	else
+		cgiBody = cgiOut;
+
+	std::ostringstream	resp;
+	resp	<< "HTTP/1.1 200 OK\r\n"
+			<< cgiHeaders << "\r\n"
+			<< "Content-Length: " << cgiBody.size() << "\r\n"
+			<< "Connection: close\r\n"
+			<< "\r\n"
+			<< cgiBody;
+
+	return (resp.str());
+}
+
 std::string	buildResponse(const Request &req, const ServerConfig &config)
 {
 	// if the request didn't even parse, it's garbage, 400.
@@ -188,6 +308,20 @@ std::string	buildResponse(const Request &req, const ServerConfig &config)
 	if (!loc)
 		return (errorResponse(404, "Not Found", config));
 
+	if (!loc->redirect.empty())
+	{
+		std::ostringstream	resp;
+		std::string			body = "<h1>301 Moved Permanently</h1>\n";
+		resp	<< "HTTP/1.1 301 Moved Permanently\r\n"
+				<< "Location: " << loc->redirect << "\r\n"
+				<< "Content-Type: text/html\r\n"
+				<< "Content-Length: " << body.size() << "\r\n"
+				<< "Connection: close\r\n"
+				<< "\r\n"
+				<< body;
+		return (resp.str());
+	}
+
 	bool	allowed = false; // allowed method check
 	for (size_t i = 0; i < loc->methods.size(); ++i)
 		if (loc->methods[i] == req.method)
@@ -195,50 +329,7 @@ std::string	buildResponse(const Request &req, const ServerConfig &config)
 	if (!allowed)
 		return (errorResponse(405, "Method Not Allowed", config));
 
-	std::string fsPath = loc->root + req.path;
-	if (!req.path.empty() && req.path[req.path.size() - 1] == '/')
-		fsPath += loc->index;
-
-	if (isCgi(fsPath, loc))
-	{
-		// Run the script, get its output. If it's empty, something went wrong
-		std::string	cgiOut = executeCgi(req, loc, fsPath);
-		if (cgiOut.empty())
-			return (errorResponse(500, "Internal Server Error", config));
-
-		// This finds the blank line that separates headers from bodyy
-		std::string::size_type	sep = cgiOut.find("\r\n\r\n");
-		std::string::size_type	seplen = 4;
-		if (sep == std::string::npos)
-		{
-			sep = cgiOut.find("\n\n");
-			seplen = 2;
-		}
-
-		// now the actual split. if a separator was found (sep isn't npos):
-		std::string	cgiHeaders;
-		std::string	cgiBody;
-		if (sep != std::string::npos)
-		{
-			cgiHeaders = cgiOut.substr(0, sep); // from the start, up to (not including) the blank line
-			cgiBody = cgiOut.substr(sep + seplen); // from after the separator to the end
-		}
-		else
-			cgiBody = cgiOut;
-
-		// reassemble into a proper HTTP response
-		std::ostringstream	resp;
-		resp	<< "HTTP/1.1 200 OK\r\n" // the status line
-				<< cgiHeaders << "\r\n" // the script's headers
-				<< "Content-Length: " // the server computes this over the body only
-				<< cgiBody.size() // just the body's byte count
-				<< "\r\n"
-				<< "Connection: close\r\n"
-				<< "\r\n" // the blank line separating the headers from the body
-				<< cgiBody; // the actual content
-
-		return (resp.str());
-	}
+	std::string	fsPath = resolvePath(req.path, loc);
 
 	if (req.method == "DELETE")
 		return (handleDelete(fsPath, config));
@@ -246,9 +337,18 @@ std::string	buildResponse(const Request &req, const ServerConfig &config)
 	if (req.method == "GET")
 	{
 		std::string	body;
-		if (!readFile(fsPath, body))
-			return (errorResponse(404, "Not Found", config));
-		return (makeResponse(200, "OK", contentType(fsPath), body));
+		if (readFile(fsPath, body))
+			return (makeResponse(200, "OK", contentType(fsPath), body));
+
+		if (loc->autoindex && !req.path.empty()
+			&& req.path[req.path.size() - 1] == '/')
+		{
+			std::string	listing;
+			if (listDirectory(stripToRoot(req.path, loc), req.path, listing))
+				return (makeResponse(200, "OK", "text/html", listing));
+		}
+
+		return (errorResponse(404, "Not Found", config));
 	}
 	
 	if (req.method == "POST")
