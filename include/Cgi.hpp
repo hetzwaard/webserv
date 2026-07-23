@@ -5,11 +5,14 @@
 #include "Http.hpp"
 #include <string>
 #include <unistd.h>
+#include <sys/types.h>
 #include <sys/wait.h>
 #include <cstdlib>
 #include <vector>
 #include <sstream>
+#include <fcntl.h>
 
-std::string	executeCgi(const Request &req, const Location *loc, const std::string &fsPath);
+bool	startCgi(const Request &req, const Location *loc,
+			const std::string &fsPath, pid_t &outPid, int &outFd);
 
 #endif

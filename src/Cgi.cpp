@@ -1,4 +1,5 @@
 #include "../include/Cgi.hpp"
+#include "../include/Server.hpp"
 
 static std::string	toStrCgi(size_t n)
 {
@@ -7,17 +8,19 @@ static std::string	toStrCgi(size_t n)
 	return (oss.str());
 }
 
-std::string	executeCgi(const Request &req, const Location *loc, const std::string &fsPath)
+bool	startCgi(const Request &req, const Location *loc, const std::string &fsPath,
+	pid_t &outPid, int &outFd)
 {
 	int	outPipe[2];
 	int	inPipe[2];
+
 	if (pipe(outPipe) < 0)
-		return ("");
+		return (false);
 	if (pipe(inPipe) < 0)
 	{
 		close(outPipe[0]);
 		close(outPipe[1]);
-		return ("");
+		return (false);
 	}
 
 	// Building the CGI env as KEY=value strs (similar to minishell)
@@ -39,45 +42,52 @@ std::string	executeCgi(const Request &req, const Location *loc, const std::strin
 		envp.push_back(const_cast<char *>(env[i].c_str()));
 	envp.push_back(NULL);
 
+	std::string					dir = ".";
+	std::string					file = fsPath;
+	std::string::size_type	slash = fsPath.rfind('/');
+	if (slash != std::string::npos)
+	{
+		dir = fsPath.substr(0, slash);
+		file = fsPath.substr(slash + 1);
+	}
+
 	pid_t	pid = fork();
 	if (pid < 0)
-		return ("");
+	{
+		close(outPipe[0]); close(outPipe[1]);
+		close(inPipe[0]); close(inPipe[1]);
+		return (false);
+	}
 
 	if (pid == 0)
 	{
-		dup2(inPipe[0], STDIN_FILENO); // my stdin is now the input pipe's read end
-		dup2(outPipe[1], STDOUT_FILENO); // my stdout is the output pipe's write end
-		close(inPipe[0]);
-		close(inPipe[1]);
-		close(outPipe[0]);
-		close(outPipe[1]);
+		dup2(inPipe[0], STDIN_FILENO);
+		dup2(outPipe[1], STDOUT_FILENO);
+		close(inPipe[0]); close(inPipe[1]);
+		close(outPipe[0]); close(outPipe[1]);
+
+		if (chdir(dir.c_str()) != 0)
+			_exit(1);
 
 		char	*argv[3];
 		argv[0] = const_cast<char *>(loc->cgiBin.c_str());
-		argv[1] = const_cast<char *>(fsPath.c_str());
+		argv[1] = const_cast<char *>(file.c_str());
 		argv[2] = NULL;
 
 		execve(loc->cgiBin.c_str(), argv, &envp[0]);
 		_exit(1);
 	}
 
-	// PARENT
-	close(inPipe[0]); // parent doesn't read the input pipe
-	close(outPipe[1]); // parent doesn't write the output pipe
+	close(inPipe[0]);
+	close(outPipe[1]);
 
 	if (!req.body.empty())
 		write(inPipe[1], req.body.c_str(), req.body.size());
-	close(inPipe[1]); // done writing — child's stdin now hits EOF
+	close(inPipe[1]);
 
-	std::string	output;
-	char			buf[4096];
-	ssize_t		n;
+	fcntl(outPipe[0], F_SETFL, O_NONBLOCK);
 
-	while ((n = read(outPipe[0], buf, sizeof(buf))) > 0)
-		output.append(buf, n);
-	close(outPipe[0]);
-
-	waitpid(pid, NULL, 0);
-
-	return (output);
+	outPid = pid;
+	outFd = outPipe[0];
+	return (true);
 }
