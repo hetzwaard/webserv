@@ -126,7 +126,7 @@ Prerequisites:
 
 Clone it:
 ```bash
-git clone https://github.com/<your-repo>/webserv && cd webserv
+git clone https://github.com/hetzwaard/webserv && cd webserv
 ```
 Build:
 ```bash
