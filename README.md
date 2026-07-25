@@ -185,6 +185,7 @@ Classic references we used while building this:
 
 ### Use of AI
 
+<<<<<<< HEAD
 We used Claude Code as a learning and planning tool, specifically:
 
 - **Architecture and explanation.** Claude helped us plan the overall design — the `Config` / `Server` / `Http` / `Cgi` file split and the single-`poll()`-loop model where listeners, clients, and CGI pipes all live in one fd set. It also walked us through the syscall-level mechanics layer by layer: the socket lifecycle (`socket`/`bind`/`listen`/`accept`), how `poll()` drives non-blocking I/O, and the `fork`/`execve`/`pipe`/`dup2`/`waitpid` chain behind CGI, including the CGI environment-variable protocol.
@@ -197,3 +198,6 @@ We used Claude Code as a learning and planning tool, specifically:
 
 ---
 Built as a Codam College project by **mahkilic** and **selcyilm**. 🌐
+=======
+We've used Claude Code to plan the architecture and to explain the syscall-level mechanics layer by layer, tested each layer before moving to the next, and debugged the failures as they came.
+>>>>>>> 1cfb3bf522c95f204dab41a35aed6214b2d66401
