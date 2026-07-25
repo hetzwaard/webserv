@@ -42,7 +42,7 @@ static std::vector<std::string>	tokenize(const std::string &path)
 static const std::string	&next(const std::vector<std::string> &t, size_t &i)
 {
 	if (i >= t.size())
-		throw std::runtime_error(": config: unexpected end of file");
+		throw std::runtime_error("config: unexpected end of file");
 	return t[i++];
 }
 
@@ -51,7 +51,7 @@ static void	expect(const std::vector<std::string> &t, size_t &i, const std::stri
 {
 	const std::string	&got = next(t, i);
 	if (got != tok)
-		throw std::runtime_error(": config: expected '" + tok + "' but got '" + got + "'");
+		throw std::runtime_error("config: expected '" + tok + "' but got '" + got + "'");
 }
 
 static Location	parseLocation(const std::vector<std::string> &t, size_t &i)
@@ -106,7 +106,7 @@ static Location	parseLocation(const std::vector<std::string> &t, size_t &i)
 			expect(t, i, ";");
 		}
 		else
-			throw std::runtime_error(": config: unknown location directive '" + key + "'");
+			throw std::runtime_error("config: unknown location directive '" + key + "'");
 	}
 	expect(t, i, "}");
 	return (loc);
@@ -145,7 +145,7 @@ static ServerConfig	parseServer(const std::vector<std::string> &t, size_t &i)
 		else if (key == "location")
 			s.locations.push_back(parseLocation(t, i));
 		else
-			throw std::runtime_error(": config: unknown server directive '" + key + "'");
+			throw std::runtime_error("config: unknown server directive '" + key + "'");
 	}
 	expect(t, i, "}");
 	return (s);
@@ -164,7 +164,7 @@ std::vector<ServerConfig>	parseConfig(const std::string &path)
 	}
 
 	if (servers.empty())
-		throw std::runtime_error(": config: no server blocks found");
+		throw std::runtime_error("config: no server blocks found");
 
 	return (servers);
 }

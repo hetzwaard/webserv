@@ -5,7 +5,13 @@ int	main(int argc, char **argv)
 {
 	signal(SIGPIPE, SIG_IGN);
 
-	std::string	path = (argc > 1) ? argv[1] : "default.conf";
+	std::string	path;
+
+	if (argc > 1)
+		path = argv[1];
+	else
+		path = "default.conf";
+	
 	try
 	{
 		std::vector<ServerConfig> servers = parseConfig(path);
@@ -15,7 +21,8 @@ int	main(int argc, char **argv)
 	catch(const std::exception& e)
 	{
 		std::cerr << "Error: " << e.what() << std::endl;
-		return (1);
+		return (EXIT_FAILURE);
 	}
-	return (0);
+
+	return (EXIT_SUCCESS);
 }

@@ -12,7 +12,7 @@ void	Server::addPollFd(int fd, short events)
 
 	pfd.fd = fd;				// which socket?
 	pfd.events = events;		// what am I waiting for?
-	pfd.revents = 0;			// the result (here what actually happened typo thing)
+	pfd.revents = 0;			// poll fills this in with what actually happened
 	_pfds.push_back(pfd);
 }
 
@@ -107,7 +107,7 @@ void	Server::run()
 
 	while (true)
 	{
-		if (poll(&_pfds[0], _pfds.size(), 1000) < 0)	// here's my array of sockets, here's how many, and -1 means wait as long as it takes 
+		if (poll(&_pfds[0], _pfds.size(), 1000) < 0)	// here's my array of sockets, here's how many, and 1000 means wait as long as it takes 
 			throw std::runtime_error("poll() failed");
 
 		checkCgiTimeouts();
@@ -146,14 +146,12 @@ void	Server::acceptClient(int listenFd)
 	_clients[clientFd] = client;
 
 	addPollFd(clientFd, POLLIN);	// tell me when this caller speaks
-
-	std::cout << "fd " << clientFd << std::endl;
 }
 
 void	Server::handleRead(int fd)
 {
 	char		buf[4096];	// read up to 4096 bytes into a stack buffer
-	size_t	n = recv(fd, buf, sizeof(buf), 0);	// n is how many bytes actually came
+	ssize_t	n = recv(fd, buf, sizeof(buf), 0);	// n is how many bytes actually came
 
 	if (n <= 0)	// if true, just close the client
 	{
@@ -187,7 +185,7 @@ void	Server::handleRead(int fd)
 	}
 
 	c.writeBuf = buildResponse(req, *c.config);	// we park the finished bytes in c.writeBuf
-	setPollOut(fd, true);	// the switch, *we are done reading*
+	setPollEvents(fd, POLLOUT);	// the switch, *we are done reading*
 }
 
 void	Server::handleWrite(int fd)
@@ -246,18 +244,6 @@ void	Server::closeClient(int fd)
 	close(fd);
 	_clients.erase(fd);
 	removePollFd(fd);
-}
-
-void	Server::setPollOut(int fd, bool on)
-{
-	for (size_t i = 0; i < _pfds.size(); ++i)
-	{
-		if (_pfds[i].fd == fd)
-		{
-			_pfds[i].events = on ? POLLOUT : POLLIN;
-			return ;
-		}
-	}
 }
 
 void	Server::startCgiFor(int clientFd, const Request &req,

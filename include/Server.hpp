@@ -17,10 +17,8 @@
 #include <unistd.h>
 #include <cstring>
 #include <stdexcept>
-#include <iostream>
 #include <sstream>
 #include <csignal>
-#include <signal.h>
 #include <ctime>
 
 #define CGI_TIMEOUT 5
@@ -65,7 +63,6 @@ private:
 	void	closeClient(int fd);								// close fd + erase from every container
 
 	void	addPollFd(int fd, short events);				// push a new fd into _pfds
-	void	setPollOut(int fd, bool on);					// flip a fd between watching POLLIN / POLLOUT
 
 	void	startCgiFor(int clientFd, const Request &req, const Location *loc, const std::string &fsPath);
 	void	handleCgiRead(int pipeFd);
