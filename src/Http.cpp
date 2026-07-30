@@ -27,6 +27,18 @@ Request	parseRequest(const std::string &raw)
 		req.path = req.path.substr(0, q);
 	}
 
+	std::string::size_type	ck = raw.find("Cookie:");
+	if (ck != std::string::npos && ck < headerEnd)
+	{
+		std::string::size_type	lineEnd = raw.find("\r\n", ck);
+		std::string::size_type	valStart = ck + 7;	// past "Cookie:"
+
+		while (valStart < lineEnd && raw[valStart] == ' ')
+			++valStart;
+
+		req.cookie = raw.substr(valStart, lineEnd - valStart);
+	}
+
 	req.valid = true;
 	return (req);
 }

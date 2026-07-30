@@ -30,6 +30,7 @@ bool	startCgi(const Request &req, const std::string &cgiBin, const std::string &
 	env.push_back("SERVER_PROTOCOL=HTTP/1.1");
 	env.push_back("REQUEST_METHOD=" + req.method);
 	env.push_back("QUERY_STRING=" + req.query);
+	env.push_back("HTTP_COOKIE=" + req.cookie);
 	env.push_back("SCRIPT_NAME=" + fsPath);
 	env.push_back("PATH_INFO=" + fsPath);
 	env.push_back("CONTENT_LENGTH=" + toStrCgi(req.body.size()));

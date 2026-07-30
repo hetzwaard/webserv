@@ -14,8 +14,10 @@ struct Request
 {
 	std::string method;
 	std::string path;
-	std::string	query; // everything after '?' in the URL
+	std::string	query;	// everything after '?' in the URL
 	std::string	body;
+	std::string	cookie;	// value of the incoming Cookie: header
+
 	bool			valid;
 
 	Request() : valid(false) {}
