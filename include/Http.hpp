@@ -28,6 +28,6 @@ bool			bodyTooLarge(const std::string &raw, size_t maxBody);
 std::string	errorResponse(int code, const std::string &status, const ServerConfig &config);
 std::string	cgiResponse(const std::string &cgiOut, const ServerConfig &config);
 bool			cgiTarget(const Request &req, const ServerConfig &config,
-							std::string &fsPath, const Location **outLoc);
+				std::string &fsPath, const Location **outLoc, std::string &cgiBin);
 
 #endif

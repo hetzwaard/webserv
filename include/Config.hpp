@@ -11,17 +11,17 @@
 
 struct Location
 {
-	std::string						path;			// "/"
-	std::string						root;			// "./www"
-	std::string						index;		// "index.html"
-	std::string						redirect;	// non-empty -> 301
-	std::string						uploadDir;	// where POST uploads land
-	std::string						cgiExt;		// ".py"
-	std::string						cgiBin;		// "/usr/bin/python3"
+	std::string						path;				// "/"
+	std::string						root;				// "./www"
+	std::string						index;			// "index.html"
+	std::string						redirect;		// non-empty -> 301
+	std::string						uploadDir;		// where POST uploads land
 
-	std::vector<std::string>	methods;		// GET POST DELETE
+	std::map<std::string, std::string>	cgi;	// ".py" -> "/usr/bin/python3", ".sh" -> "/bin/bash"
 
-	bool								autoindex;	// directory listing
+	std::vector<std::string>	methods;			// GET POST DELETE
+
+	bool								autoindex;		// directory listing
 
 	Location() : autoindex(false) {}
 };

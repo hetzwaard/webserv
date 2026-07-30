@@ -64,7 +64,8 @@ private:
 
 	void	addPollFd(int fd, short events);				// push a new fd into _pfds
 
-	void	startCgiFor(int clientFd, const Request &req, const Location *loc, const std::string &fsPath);
+	void	startCgiFor(int clientFd, const Request &req,
+							const std::string &fsPath, const std::string &cgiBin);
 	void	handleCgiRead(int pipeFd);
 	void	checkCgiTimeouts();
 	void	checkClientTimeouts();

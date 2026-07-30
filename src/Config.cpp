@@ -79,14 +79,11 @@ static Location	parseLocation(const std::vector<std::string> &t, size_t &i)
 			loc.uploadDir = next(t, i);
 			expect(t, i, ";");
 		}
-		else if (key == "cgi_ext")
+		else if (key == "cgi")
 		{
-			loc.cgiExt = next(t, i);
-			expect(t, i, ";");
-		}
-		else if (key == "cgi_bin")
-		{
-			loc.cgiBin = next(t, i);
+			std::string	ext = next(t, i);
+			std::string	bin = next(t, i);
+			loc.cgi[ext] = bin;
 			expect(t, i, ";");
 		}
 		else if (key == "autoindex")

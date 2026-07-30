@@ -221,17 +221,24 @@ static std::string	handleUpload(const Request &req, const Location *loc, const S
 	return (makeResponse(201, "Created", "text/html", "<h1>File uploaded</h1>\n")); // "your POST made a new resource," more precise than a plain 200
 }
 
-static bool	isCgi(const std::string &fsPath, const Location *loc)
+static bool	isCgi(const std::string &fsPath, const Location *loc, std::string &binOut)
 {
-	if (loc->cgiExt.empty()) // not CGI, return false
-		return (false);
-	if (fsPath.size() < loc->cgiExt.size()) // It compares cgiExt.size() characters starting at fsPath.size() - cgiExt.size()
-		return (false);
-	return (fsPath.compare(fsPath.size() - loc->cgiExt.size(), loc->cgiExt.size(), loc->cgiExt) == 0);
+	std::map<std::string, std::string>::const_iterator	it;
+
+	for (it = loc->cgi.begin(); it != loc->cgi.end(); ++it)
+	{
+		const std::string	&ext = it->first;
+		if (fsPath.size() >= ext.size() && fsPath.compare(fsPath.size() - ext.size(), ext.size(), ext) == 0)
+		{
+			binOut = it->second;
+			return (true);
+		}
+	}
+	return (false);
 }
 
 bool	cgiTarget(const Request &req, const ServerConfig &config,
-				std::string &fsPath, const Location **outLoc)
+				std::string &fsPath, const Location **outLoc, std::string &cgiBin)
 {
 	if (!req.valid || req.path.find("..") != std::string::npos)
 		return (false);
@@ -249,7 +256,7 @@ bool	cgiTarget(const Request &req, const ServerConfig &config,
 
 	std::string	path = resolvePath(req.path, loc);
 
-	if (!isCgi(path, loc))
+	if (!isCgi(path, loc, cgiBin))
 		return (false);
 
 	fsPath = path;

@@ -8,7 +8,7 @@ static std::string	toStrCgi(size_t n)
 	return (oss.str());
 }
 
-bool	startCgi(const Request &req, const Location *loc, const std::string &fsPath,
+bool	startCgi(const Request &req, const std::string &cgiBin, const std::string &fsPath,
 	pid_t &outPid, int &outFd)
 {
 	int	outPipe[2];
@@ -70,11 +70,11 @@ bool	startCgi(const Request &req, const Location *loc, const std::string &fsPath
 			_exit(1);
 
 		char	*argv[3];
-		argv[0] = const_cast<char *>(loc->cgiBin.c_str());
+		argv[0] = const_cast<char *>(cgiBin.c_str());
 		argv[1] = const_cast<char *>(file.c_str());
 		argv[2] = NULL;
 
-		execve(loc->cgiBin.c_str(), argv, &envp[0]);
+		execve(cgiBin.c_str(), argv, &envp[0]);
 		_exit(1);
 	}
 

@@ -12,7 +12,7 @@
 #include <sstream>
 #include <fcntl.h>
 
-bool	startCgi(const Request &req, const Location *loc,
-			const std::string &fsPath, pid_t &outPid, int &outFd);
+bool	startCgi(const Request &req, const std::string &cgiBin, const std::string &fsPath,
+					pid_t &outPid, int &outFd);
 
 #endif

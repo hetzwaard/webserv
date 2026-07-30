@@ -177,10 +177,11 @@ void	Server::handleRead(int fd)
 	Request	req = parseRequest(c.readBuf);
 
 	std::string		fsPath;
+	std::string		cgiBin;
 	const Location	*loc = NULL;
-	if (cgiTarget(req, *c.config, fsPath, &loc)) // CGI request → start it and return; poll takes over
+	if (cgiTarget(req, *c.config, fsPath, &loc, cgiBin)) // CGI request → start it and return; poll takes over
 	{
-		startCgiFor(fd, req, loc, fsPath);
+		startCgiFor(fd, req, fsPath, cgiBin);
 		return ;
 	}
 
@@ -247,12 +248,12 @@ void	Server::closeClient(int fd)
 }
 
 void	Server::startCgiFor(int clientFd, const Request &req,
-						const Location *loc, const std::string &fsPath)
+		const std::string &fsPath, const std::string &cgiBin)
 {
 	pid_t		pid;
 	int		pipeFd;
 
-	if (!startCgi(req, loc, fsPath, pid, pipeFd))
+	if (!startCgi(req, cgiBin, fsPath, pid, pipeFd))
 	{
 		_clients[clientFd].writeBuf =
 			errorResponse(500, "Internal Server Error", *_clients[clientFd].config);
