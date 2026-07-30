@@ -5,13 +5,19 @@ int	main(int argc, char **argv)
 {
 	signal(SIGPIPE, SIG_IGN);
 
+	if (argc > 2)
+	{
+		std::cerr << "Usage: ./webserv [configuration file]" << std::endl;
+		return (EXIT_FAILURE);
+	}
+
 	std::string	path;
 
-	if (argc > 1)
+	if (argc == 2)
 		path = argv[1];
 	else
 		path = "default.conf";
-	
+		
 	try
 	{
 		std::vector<ServerConfig> servers = parseConfig(path);
