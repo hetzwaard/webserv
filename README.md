@@ -24,12 +24,16 @@ The goal: understand how an HTTP server really works — sockets, `poll()`, and 
   - Directory listing on/off (`autoindex`)
   - Upload storage location
   - CGI by file extension
-- CGI execution (Python) for both `GET` and `POST`
+- CGI execution for both `GET` and `POST`
 - Custom error pages (falls back to a generated page if the file is missing)
-- Client body size limit (`client_max_body_size` → `413`)
+- Client body size limit (`client_max_body_size` -> `413`)
 - Accurate HTTP status codes
 - Request, CGI, and idle-client timeouts — nothing hangs forever
 - `SIGPIPE` ignored so a disconnecting client can't kill the server
+
+### Bonus
+- **Multiple CGI types** — different interpreters chosen by file extension (e.g. `.py` via python3, `.sh` via bash), configured per location
+- **Cookies and sessions** — the server passes the incoming `Cookie` header to CGI as `HTTP_COOKIE` and forwards the script's `Set-Cookie` back to the client; a visit-counter demo lives at `/session.py`
 
 ---
 ## Architecture Overview
@@ -57,8 +61,8 @@ Flow:
 ## Key Modules
 - **Config**: turns config text into tokens, then walks them into `ServerConfig` / `Location` structs (parser mirrors the file's nesting)
 - **Server**: owns the single `poll()` array and three fd maps (listeners, clients, CGI pipes); does no HTTP parsing itself
-- **Http**: request parsing, path resolution, static files, error pages, redirects, autoindex — no socket code
-- **Cgi**: forks a child, wires two pipes (body in, output out), `execve`s the interpreter, runs it in the script's own directory
+- **Http**: request parsing, path resolution, static files, error pages, redirects, autoindex, cookie extraction — no socket code
+- **Cgi**: forks a child, wires two pipes (body in, output out), `execve`s the interpreter chosen for the request's extension, runs it in the script's own directory
 - **Timeouts**: hung CGIs are killed (`504`), idle clients are dropped
 
 ---
@@ -106,23 +110,25 @@ server {
         methods GET POST DELETE;
         autoindex off;
         upload_dir ./uploads;
-        cgi_ext .py;
-        cgi_bin /usr/bin/python3;
+        cgi .py /usr/bin/python3;    # extension -> interpreter
+        cgi .sh /bin/bash;           # a second CGI type
     }
 
     location /old {
         methods GET;
-        return /;            # 301 redirect
+        return /;                    # 301 redirect
     }
 }
 ```
-Longest-prefix matching decides which `location` serves a request (`/uploads/x` prefers a `/uploads` block over `/`).
+Each `cgi <ext> <interpreter>;` line adds one CGI type, so a location can run
+several. Longest-prefix matching decides which `location` serves a request
+(`/uploads/x` prefers a `/uploads` block over `/`).
 
 ---
 ## Building
 Prerequisites:
 - `make`, a C++98 compiler (`c++`)
-- Python 3 for CGI (path set by `cgi_bin` in the config)
+- Python 3 and Bash for the CGI demos (paths set by the `cgi` lines in the config)
 
 Clone it:
 ```bash
@@ -161,9 +167,14 @@ curl -i localhost:4242/uploads/file.txt
 # delete it
 curl -i -X DELETE localhost:4242/uploads/file.txt
 
-# CGI (GET and POST)
-curl -i localhost:4242/hello.py
+# CGI — two interpreters, chosen by extension (bonus)
+curl -i localhost:4242/hello.py       # python3
+curl -i localhost:4242/hello.sh       # bash
 curl -i -X POST -d "name=world" localhost:4242/hello.py
+
+# cookies / sessions (bonus): the count climbs across requests
+curl -i -c jar localhost:4242/session.py    # first visit: Set-Cookie, count 1
+curl -i -b jar localhost:4242/session.py    # returning: count 2
 
 # a redirect
 curl -iL localhost:4242/old
@@ -172,7 +183,9 @@ curl -iL localhost:4242/old
 curl -i localhost:4243/
 ```
 You can also open `http://localhost:4242/` in a browser and click around —
-including the upload form at `/form.html` and the directory listing at `/uploads/`.
+including the upload form at `/form.html`, the directory listing at `/uploads/`,
+and the session counter at `/session.py` (reload to watch it climb; try an
+incognito window for a fresh session).
 
 ---
 ## Resources
@@ -188,7 +201,7 @@ We used Claude Code as a learning and planning tool, specifically:
 
 - **Architecture and explanation.** Claude helped us plan the overall design — the `Config` / `Server` / `Http` / `Cgi` file split and the single-`poll()`-loop model where listeners, clients, and CGI pipes all live in one fd set. It also walked us through the syscall-level mechanics layer by layer: the socket lifecycle (`socket`/`bind`/`listen`/`accept`), how `poll()` drives non-blocking I/O, and the `fork`/`execve`/`pipe`/`dup2`/`waitpid` chain behind CGI, including the CGI environment-variable protocol.
 
-- **Typed by hand, built in layers.** We typed every line ourselves rather than pasting, and built the server one testable layer at a time — sockets, then config, then HTTP, then uploads/delete, then CGI, then hardening — compiling and testing each layer before moving on. This kept us able to explain and defend every part.
+- **Typed by hand, built in layers.** We typed every line ourselves rather than pasting, and built the server one testable layer at a time — sockets, then config, then HTTP, then uploads/delete, then CGI, then hardening, then the bonuses — compiling and testing each layer before moving on. This kept us able to explain and defend every part.
 
 - **Debugging was ours.** When something broke, we diagnosed it ourselves by reading the actual bytes and processes: `curl -i` to see raw responses, `cat -A` to spot bad `\r\n` and header typos, and `ps` to confirm no CGI processes were left behind. Most bugs (inverted booleans, a missing blank line before the body, an unsigned `recv` return) we found this way rather than being told the answer.
 
