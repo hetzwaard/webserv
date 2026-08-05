@@ -213,7 +213,7 @@ static std::string	handleDelete(const std::string &fsPath, const ServerConfig &c
 		return (errorResponse(404, "Not Found", config));
 	test.close(); // we close it immediately
 
-	if (unlink(fsPath.c_str()) != 0) // it returns 0 on success, non-zero on failure
+	if (std::remove(fsPath.c_str()) != 0) // it returns 0 on success, non-zero on failure
 		return (errorResponse(403, "Forbidden", config));
 
 	return (makeResponse(200, "OK", "text/html", "<h1>File deleted</h1>\n")); // Success → 200

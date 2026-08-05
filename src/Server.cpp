@@ -6,6 +6,23 @@ Server::Server(const std::vector<ServerConfig> &servers) : _servers(servers) {}
 
 Server::~Server() {}
 
+// inet_addr is not on the subject's allowed-function list, so parse the dotted
+// quad ourselves and build the network-order address with htonl.
+static in_addr_t	parseIPv4(const std::string &host)
+{
+	std::istringstream	iss(host);
+	unsigned int			b[4];
+	char						d1, d2, d3, extra;
+
+	if (!(iss >> b[0] >> d1 >> b[1] >> d2 >> b[2] >> d3 >> b[3])
+		|| d1 != '.' || d2 != '.' || d3 != '.'
+		|| b[0] > 255 || b[1] > 255 || b[2] > 255 || b[3] > 255
+		|| (iss >> extra))	// trailing junk like "1.2.3.4.5"
+		throw std::runtime_error("config: bad host '" + host + "'");
+
+	return (htonl((b[0] << 24) | (b[1] << 16) | (b[2] << 8) | b[3]));
+}
+
 void	Server::addPollFd(int fd, short events)
 {
 	struct pollfd	pfd;
@@ -30,7 +47,7 @@ void	Server::setupListeners()
 		struct sockaddr_in	addr;	// to know where to socket lives
 		std::memset(&addr, 0, sizeof(addr));	// to zero first so no garbage bytes linger in the struct's padding
 		addr.sin_family = AF_INET;	// IPv4 again
-		addr.sin_addr.s_addr = inet_addr(_servers[i].host.c_str());	// converting 0.0.0.0 to kernel language
+		addr.sin_addr.s_addr = parseIPv4(_servers[i].host);	// converting 0.0.0.0 to kernel language
 		addr.sin_port = htons(_servers[i].port);	// flips the bytes (safer in 16-bit numeric)
 		
 		if (bind(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0)
