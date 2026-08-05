@@ -11,6 +11,7 @@
 #include <vector>
 #include <sstream>
 #include <fcntl.h>
+#include <cstdio>
 
 bool	startCgi(const Request &req, const std::string &cgiBin, const std::string &fsPath,
 					pid_t &outPid, int &outFd);

@@ -8,15 +8,45 @@ static std::string	toStrCgi(size_t n)
 	return (oss.str());
 }
 
+static bool	writeBodyToFile(const std::string &body, int &outFd)
+{
+	static size_t	counter = 0;
+
+	std::string	path = "/tmp/webserv_cgi_" + toStrCgi(counter++);
+
+	int	fd = open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
+	if (fd < 0)
+		return (false);
+
+	size_t	sent = 0;
+	while (sent < body.size())
+	{
+		ssize_t	n = write(fd, body.c_str() + sent, body.size() - sent);
+		if (n <= 0)
+		{
+			close(fd);
+			std::remove(path.c_str());
+			return (false);
+		}
+		sent += n;
+	}
+	close(fd);
+
+	outFd = open(path.c_str(), O_RDONLY);	// reopen, offset starts at 0, no lseek needed
+	std::remove(path.c_str());					// path gone, the open fd keeps the data alive
+
+	return (outFd >= 0);
+}
+
 bool	startCgi(const Request &req, const std::string &cgiBin, const std::string &fsPath,
 	pid_t &outPid, int &outFd)
 {
 	int	outPipe[2];
-	int	inPipe[2];
+	int	bodyFd;
 
 	if (pipe(outPipe) < 0)
 		return (false);
-	if (pipe(inPipe) < 0)
+	if (!writeBodyToFile(req.body, bodyFd))
 	{
 		close(outPipe[0]);
 		close(outPipe[1]);
@@ -56,19 +86,19 @@ bool	startCgi(const Request &req, const std::string &cgiBin, const std::string &
 	if (pid < 0)
 	{
 		close(outPipe[0]); close(outPipe[1]);
-		close(inPipe[0]); close(inPipe[1]);
+		close(bodyFd);
 		return (false);
 	}
 
 	if (pid == 0)
 	{
-		dup2(inPipe[0], STDIN_FILENO);
+		dup2(bodyFd, STDIN_FILENO);
 		dup2(outPipe[1], STDOUT_FILENO);
-		close(inPipe[0]); close(inPipe[1]);
+		close(bodyFd);
 		close(outPipe[0]); close(outPipe[1]);
 
 		if (chdir(dir.c_str()) != 0)
-			_exit(1);
+			std::exit(1);
 
 		char	*argv[3];
 		argv[0] = const_cast<char *>(cgiBin.c_str());
@@ -76,15 +106,11 @@ bool	startCgi(const Request &req, const std::string &cgiBin, const std::string &
 		argv[2] = NULL;
 
 		execve(cgiBin.c_str(), argv, &envp[0]);
-		_exit(1);
+		std::exit(1);
 	}
 
-	close(inPipe[0]);
 	close(outPipe[1]);
-
-	if (!req.body.empty())
-		write(inPipe[1], req.body.c_str(), req.body.size());
-	close(inPipe[1]);
+	close(bodyFd);
 
 	fcntl(outPipe[0], F_SETFL, O_NONBLOCK);
 
