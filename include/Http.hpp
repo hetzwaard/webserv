@@ -29,6 +29,7 @@ struct Request
 Request		parseRequest(const std::string &raw);
 std::string	buildResponse(const Request &req, const ServerConfig &config);
 bool			isRequestComplete(const std::string &raw);
+bool			isChunked(const std::string &raw);
 bool			bodyTooLarge(const std::string &raw, size_t maxBody);
 std::string	errorResponse(int code, const std::string &status, const ServerConfig &config);
 std::string	cgiResponse(const std::string &cgiOut, const ServerConfig &config);

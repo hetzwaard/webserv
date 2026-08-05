@@ -188,6 +188,15 @@ void	Server::handleRead(int fd)
 		return ;
 	}
 
+	// we do not unchunk, so say so straight away instead of waiting for a
+	// Content-Length that will never come and timing the client out
+	if (isChunked(c.readBuf))
+	{
+		c.writeBuf = errorResponse(501, "Not Implemented", *c.config);
+		setPollEvents(fd, POLLOUT);
+		return ;
+	}
+
 	if (!isRequestComplete(c.readBuf)) // if we don't find it yet, the request is still arriving
 		return ;
 

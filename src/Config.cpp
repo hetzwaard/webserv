@@ -128,6 +128,11 @@ static ServerConfig	parseServer(const std::vector<std::string> &t, size_t &i)
 			s.port = std::atoi(next(t, i).c_str());
 			expect(t, i, ";");
 		}
+		else if (key == "server_name")
+		{
+			s.serverName = next(t, i);	// stored, but we do not route on it
+			expect(t, i, ";");
+		}
 		else if (key == "client_max_body_size")
 		{
 			s.maxBodySize = std::atoi(next(t, i).c_str());

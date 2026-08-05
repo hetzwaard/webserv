@@ -1,6 +1,26 @@
 #include "../include/Http.hpp"
 #include "../include/Cgi.hpp"
 
+// HTTP header names are case-insensitive (RFC 7230), so "content-length:" and
+// "Content-Length:" must both be found. Returns where the name starts, or npos.
+static std::string::size_type	findHeader(const std::string &raw, const std::string &name)
+{
+	if (name.size() > raw.size())
+		return (std::string::npos);
+
+	for (std::string::size_type i = 0; i + name.size() <= raw.size(); ++i)
+	{
+		std::string::size_type	j = 0;
+
+		while (j < name.size()
+			&& std::tolower((unsigned char)raw[i + j]) == std::tolower((unsigned char)name[j]))
+			++j;
+		if (j == name.size())
+			return (i);
+	}
+	return (std::string::npos);
+}
+
 Request	parseRequest(const std::string &raw)
 {
 	Request	req; // starts out valid = false
@@ -27,7 +47,7 @@ Request	parseRequest(const std::string &raw)
 		req.path = req.path.substr(0, q);
 	}
 
-	std::string::size_type	ck = raw.find("Cookie:");
+	std::string::size_type	ck = findHeader(raw, "Cookie:");
 	if (ck != std::string::npos && ck < headerEnd)
 	{
 		std::string::size_type	lineEnd = raw.find("\r\n", ck);
@@ -50,7 +70,7 @@ bool	bodyTooLarge(const std::string &raw, size_t maxBody)
 		return (false);
 
 	// Before the header end, if it's there and the declared size exceeds the limit, reject immdtly.
-	std::string::size_type	clPos = raw.find("Content-Length:");
+	std::string::size_type	clPos = findHeader(raw, "Content-Length:");
 	if (clPos != std::string::npos && clPos < headerEnd)
 	{
 		size_t	declared = (size_t)std::atol(raw.c_str() + clPos + 15);
@@ -66,7 +86,7 @@ bool	isRequestComplete(const std::string &raw)
 	if (headerEnd == std::string::npos)
 		return (false);
 
-	std::string::size_type	clPos = raw.find("Content-Length:"); // if it's not there, would mean it's in the body
+	std::string::size_type	clPos = findHeader(raw, "Content-Length:"); // if it's not there, would mean it's in the body
 	if (clPos == std::string::npos || clPos > headerEnd)
 		return (true);
 
@@ -74,6 +94,22 @@ bool	isRequestComplete(const std::string &raw)
 	std::string::size_type	bodyStart = headerEnd + 4; // the body begins 4 bytes after where \r\n\r\n
 
 	return (raw.size() - bodyStart >= contentLength);
+}
+
+// We do not decode chunked bodies. Detect them once the headers are in so the
+// client gets an immediate 501 instead of waiting out the idle timeout.
+bool	isChunked(const std::string &raw)
+{
+	std::string::size_type	headerEnd = raw.find("\r\n\r\n");
+	if (headerEnd == std::string::npos)
+		return (false);
+
+	std::string::size_type	te = findHeader(raw, "Transfer-Encoding:");
+	if (te == std::string::npos || te > headerEnd)
+		return (false);
+
+	std::string::size_type	lineEnd = raw.find("\r\n", te);
+	return (findHeader(raw.substr(te, lineEnd - te), "chunked") != std::string::npos);
 }
 
 static const Location	*matchLocation(const Request &req, const ServerConfig &config)
