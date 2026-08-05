@@ -112,6 +112,13 @@ static std::string	contentType(const std::string &path)
 
 static bool	readFile(const std::string &path, std::string &out)
 {
+	struct stat	st;
+
+	// ifstream opens a directory successfully on libstdc++ and only throws when
+	// read, so is_open() is not enough — reject anything that isn't a regular file
+	if (stat(path.c_str(), &st) != 0 || !S_ISREG(st.st_mode))
+		return (false);
+
 	std::ifstream	file(path.c_str(), std::ios::binary);
 
 	if (!file.is_open())

@@ -7,8 +7,11 @@
 #include <fstream>
 #include <iterator>
 #include <cstdlib>
+#include <cstdio>
+#include <cctype>
 #include <unistd.h>
 #include <dirent.h>
+#include <sys/stat.h>
 
 struct Request
 {
