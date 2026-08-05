@@ -62,7 +62,7 @@ Flow:
 - **Config**: turns config text into tokens, then walks them into `ServerConfig` / `Location` structs (parser mirrors the file's nesting)
 - **Server**: owns the single `poll()` array and three fd maps (listeners, clients, CGI pipes); does no HTTP parsing itself
 - **Http**: request parsing, path resolution, static files, error pages, redirects, autoindex, cookie extraction — no socket code
-- **Cgi**: forks a child, wires two pipes (body in, output out), `execve`s the interpreter chosen for the request's extension, runs it in the script's own directory
+- **Cgi**: writes the request body to a temp file (unlinked immediately) and hands it to the child as stdin, pipes the child's stdout back into the `poll()` set, then `execve`s the interpreter chosen for the request's extension, running it in the script's own directory
 - **Timeouts**: hung CGIs are killed (`504`), idle clients are dropped
 
 ---
@@ -86,7 +86,7 @@ Error: bind() failed on port 4242
 $ curl -i localhost:4242/missing
 HTTP/1.1 404 Not Found
 
-$ curl -i -X DELETE localhost:4242/                # method not allowed here
+$ curl -i -X DELETE localhost:4243/                # method not allowed here
 HTTP/1.1 405 Method Not Allowed
 ```
 Rules of thumb:

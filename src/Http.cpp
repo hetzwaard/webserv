@@ -216,7 +216,7 @@ static bool	listDirectory(const std::string &dirPath, const std::string &urlPath
 	while ((entry = readdir(dir)) != NULL)
 	{
 		std::string	name = entry->d_name;
-		if (name == ".")
+		if (name == "." || name == "..")	// ".." would only hit the traversal guard
 			continue ;
 		body += "<li><a href=\"" + urlPath + name + "\">" + name + "</a></li>\n";
 	}
